@@ -327,10 +327,10 @@ for fold in tqdm(np.arange(total_folds)):
         known_idx = np.max(y_cat_train * np.expand_dims(~unknown_train, axis=1), axis=0)
         #plt.plot(np.max(scores_test * known_idx, axis=1))
         #plt.show()
-        if openness == 'low':
-            threshold = 0.
-        else:
-            threshold = 0.6
+        threshold = 0.6
+        # check if no anomalous training samples are available
+        if openness == 'high':
+            threshold = 0.8
         pred_test = predict_on_threshold(scores_test, known_idx, threshold=threshold)
         # pred_test = predict_on_threshold(scores_test*known_idx, threshold=0.7)
         # plt.imshow(pred_test, aspect='auto')
