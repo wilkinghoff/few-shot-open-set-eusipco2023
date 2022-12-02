@@ -273,7 +273,7 @@ for fold in tqdm(np.arange(total_folds)):
     data_raw_test = data_raw[~train]
     unknown_train = unknown[train]
     unknown_test =  unknown[~train]
-    batch_size = int(2**np.ceil(np.log(np.sum(train))/np.log(2)-2))
+    batch_size = int(2**np.floor(np.log(np.sum(train))/np.log(2)-2))
 
     scores_test = np.zeros((np.sum(~train), num_classes))
     scores_train = np.zeros((np.sum(train), num_classes))
