@@ -16,22 +16,22 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import accuracy_score
 
 
-def predict_on_threshold(predictions: np.ndarray, threshold: float = 0.5) -> np.ndarray:
-    """
-    Taken from:
-    https://github.com/Machine-Listeners-Valencia/fsl_osr_dataset_baseline
-    """
-    predict_openset = np.zeros((predictions.shape[0], predictions.shape[1]))
-
+def predict_on_threshold(predictions: np.ndarray, known_idx: np.ndarray, threshold: float = 0.5) -> np.ndarray:
+    predict_openset = np.zeros(predictions.shape)
+    # only keep largest value
     for j in range(predictions.shape[0]):
         max_value = np.amax(predictions[j, :])
-        idx_max_value = np.where(predictions[j, :] == max_value)
-        idx_max_value = idx_max_value[0]
-
-        if max_value >= threshold:
+        idx_max_value = np.argmax(predictions[j, :])
+        predict_openset[j, idx_max_value] = max_value
+    # handle known unknowns
+    predict_openset *= known_idx
+    # compare to threshold
+    for j in range(predictions.shape[0]):
+        max_value = np.amax(predict_openset[j, :])
+        idx_max_value = np.argmax(predict_openset[j, :])
+        if max_value > threshold:
             predict_openset[j, idx_max_value] = 1
-
-    return predict_openset
+    return predict_openset.astype(np.int32)
 
 
 class MagnitudeSpectrogram(tf.keras.layers.Layer):
@@ -256,16 +256,16 @@ labels_enc = le.fit_transform(labels)
 y_cat = keras.utils.np_utils.to_categorical(labels_enc, num_classes=num_classes)
 
 # training parameters
-batch_size = 16
-batch_size_test = 16
 epochs = 100
 alpha = 1
 n_subclusters = 1
 iterations = 5
 
+if not os.path.exists('./trained_models'):
+   os.makedirs('./trained_models')
 total_folds = {1:40, 2:20, 4:10}[shots]
 final_results = np.zeros((iterations, total_folds, 5))
-for fold in np.arange(total_folds):
+for fold in tqdm(np.arange(total_folds)):
     train = folds==fold+1
     y_cat_train = y_cat[train]
     y_cat_test = y_cat[~train]
@@ -273,6 +273,7 @@ for fold in np.arange(total_folds):
     data_raw_test = data_raw[~train]
     unknown_train = unknown[train]
     unknown_test =  unknown[~train]
+    batch_size = int(2**np.ceil(np.log(np.sum(train))/np.log(2)-2))
 
     scores_test = np.zeros((np.sum(~train), num_classes))
     scores_train = np.zeros((np.sum(train), num_classes))
@@ -285,7 +286,7 @@ for fold in np.arange(total_folds):
         model.compile(loss=[mixupLoss], optimizer=tf.keras.optimizers.Adam())
         #print(model.summary())
         # fit model
-        weight_path = 'wts_' + str(k_iter+1) + 'k_' + str(target_sr) + '_' + str(fold) + '_' + openness + '_' + str(shots) + '.h5'
+        weight_path = './trained_models/wts_' + str(k_iter+1) + 'k_' + str(target_sr) + '_' + str(fold) + '_' + openness + '_' + str(shots) + '.h5'
         if not os.path.isfile(weight_path):
             model.fit(
                 [data_raw_train, y_cat_train], y_cat_train, verbose=1,
@@ -323,12 +324,18 @@ for fold in np.arange(total_folds):
         #plt.show()
 
         # compute and print results
-        known_idx = np.max(y_cat_train*np.expand_dims(~unknown_train, axis=1), axis=0)
-        #pred_test = predict_on_threshold(scores_test, threshold=0.85)*known_idx
-        pred_test = predict_on_threshold(scores_test*known_idx, threshold=0.75)
-        #plt.imshow(pred_test, aspect='auto')
+        known_idx = np.max(y_cat_train * np.expand_dims(~unknown_train, axis=1), axis=0)
+        #plt.plot(np.max(scores_test * known_idx, axis=1))
         #plt.show()
-        acc_kk = accuracy_score(y_cat_test[~unknown_test]*known_idx, pred_test[~unknown_test])
+        if openness == 'low':
+            threshold = 0.
+        else:
+            threshold = 0.6
+        pred_test = predict_on_threshold(scores_test, known_idx, threshold=threshold)
+        # pred_test = predict_on_threshold(scores_test*known_idx, threshold=0.7)
+        # plt.imshow(pred_test, aspect='auto')
+        # plt.show()
+        acc_kk = accuracy_score(y_cat_test[~unknown_test] * known_idx, pred_test[~unknown_test])
         final_results[k_iter, fold, 0] = acc_kk
         acc_u = accuracy_score(np.zeros(y_cat_test[unknown_test].shape), pred_test[unknown_test])
         if openness == 'low':
@@ -340,13 +347,13 @@ for fold in np.arange(total_folds):
         elif openness == 'high':
             # acc_uu
             final_results[k_iter, fold, 3] = acc_u
-        acc_w = 0.5*acc_kk+0.5*acc_u
+        acc_w = 0.5 * acc_kk + 0.5 * acc_u
         final_results[k_iter, fold, 4] = acc_w
-        print(acc_w)
-    print('####################')
-    print(np.mean(final_results, axis=0)[fold])
-    print(np.std(final_results, axis=0)[fold])
-    print('####################')
+        # print(acc_w)
+    # print('####################')
+    # print(np.mean(final_results, axis=0)[fold])
+    # print(np.std(final_results, axis=0)[fold])
+    # print('####################')
 
 
 print('####################')
