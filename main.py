@@ -226,34 +226,8 @@ def model_emb_cnn(num_classes, raw_dim, n_subclusters, use_bias=False):
 # Load data and compute embeddings
 ########################################################################################################################
 target_sr = 16000 # original sr is 16000
-openness = 'middle' # 'high' or 'middle' or 'low'
-shots = 1 # 1 or 2 or 4
-info = pd.read_csv('./meta/' + str(shots) + 'shot_openness' + openness + '.csv')
-
-# load data
-print('Loading data')
-data_raw_path = str(target_sr) + '_data_raw.npy'
-if os.path.isfile(data_raw_path):
-    data_raw = np.load(data_raw_path)
-else:
-    data_raw = []
-    for file_path in tqdm(info['filename']):
-        wav, fs = sf.read('./' + file_path)
-        raw = librosa.core.to_mono(wav.transpose()).transpose()[:4 * target_sr]
-        data_raw.append(raw)
-    # reshape array and store
-    data_raw = np.expand_dims(np.array(data_raw, dtype=np.float32), axis=-1)
-    np.save(data_raw_path, data_raw)
-labels = np.array([info['filename'][k].split('/')[1] for k in np.arange(len(info['filename']))])
-unknown = info['target'] == 'unknown'
-folds = info['fold']
-labels[folds==41] = 'unknown'
-
-# encode labels
-num_classes = len(np.unique(labels))
-le = LabelEncoder()
-labels_enc = le.fit_transform(labels)
-y_cat = keras.utils.np_utils.to_categorical(labels_enc, num_classes=num_classes)
+#openness = 'high' # 'high' or 'middle' or 'low'
+#shots = 4 # 1 or 2 or 4
 
 # training parameters
 epochs = 100
@@ -263,106 +237,129 @@ iterations = 5
 
 if not os.path.exists('./trained_models'):
    os.makedirs('./trained_models')
-total_folds = {1:40, 2:20, 4:10}[shots]
-final_results = np.zeros((iterations, total_folds, 5))
-for fold in tqdm(np.arange(total_folds)):
-    train = folds==fold+1
-    y_cat_train = y_cat[train]
-    y_cat_test = y_cat[~train]
-    data_raw_train = data_raw[train]
-    data_raw_test = data_raw[~train]
-    unknown_train = unknown[train]
-    unknown_test =  unknown[~train]
-    batch_size = int(2**np.floor(np.log(np.sum(train))/np.log(2)-2))
+for openness in ['low', 'middle', 'high']:
+    for shots in [1, 2, 4]:
+        info = pd.read_csv('./meta/' + str(shots) + 'shot_openness' + openness + '.csv')
 
-    scores_test = np.zeros((np.sum(~train), num_classes))
-    scores_train = np.zeros((np.sum(train), num_classes))
-
-    for k_iter in np.arange(iterations):
-        # compile model
-        data_input, label_input, loss_output = model_emb_cnn(num_classes=num_classes, raw_dim=data_raw_train.shape[1],
-                                                             n_subclusters=n_subclusters, use_bias=False)
-        model = tf.keras.Model(inputs=[data_input, label_input], outputs=[loss_output])
-        model.compile(loss=[mixupLoss], optimizer=tf.keras.optimizers.Adam())
-        #print(model.summary())
-        # fit model
-        weight_path = './trained_models/wts_' + str(k_iter+1) + 'k_' + str(target_sr) + '_' + str(fold) + '_' + openness + '_' + str(shots) + '.h5'
-        if not os.path.isfile(weight_path):
-            model.fit(
-                [data_raw_train, y_cat_train], y_cat_train, verbose=1,
-                batch_size=batch_size, epochs=epochs,
-                #validation_data=([data_raw_test, y_cat_test], y_cat_test)
-                )
-            model.save(weight_path)
+        # load data
+        print('Loading data')
+        data_raw_path = str(target_sr) + '_data_raw.npy'
+        if os.path.isfile(data_raw_path):
+            data_raw = np.load(data_raw_path)
         else:
-            model = tf.keras.models.load_model(weight_path,
-                                               custom_objects={'MixupLayer': MixupLayer, 'mixupLoss': mixupLoss,
-                                                               'SCAdaCos': SCAdaCos,
-                                                               'MagnitudeSpectrogram': MagnitudeSpectrogram})
+            data_raw = []
+            for file_path in tqdm(info['filename']):
+                wav, fs = sf.read('./' + file_path)
+                raw = librosa.core.to_mono(wav.transpose()).transpose()[:4 * target_sr]
+                data_raw.append(raw)
+            # reshape array and store
+            data_raw = np.expand_dims(np.array(data_raw, dtype=np.float32), axis=-1)
+            np.save(data_raw_path, data_raw)
+        labels = np.array([info['filename'][k].split('/')[1] for k in np.arange(len(info['filename']))])
+        unknown = info['target'] == 'unknown'
+        folds = info['fold']
+        labels[folds==41] = 'unknown'
 
-        # predict class probabilities
-        #test_probs = model.predict([data_raw_test, np.zeros((np.sum(~train), num_classes))], batch_size=batch_size)[:,:,0]
-        #plt.imshow(test_probs, aspect='auto')
-        #plt.show()
+        # encode labels
+        num_classes = len(np.unique(labels))
+        le = LabelEncoder()
+        labels_enc = le.fit_transform(labels)
+        y_cat = keras.utils.np_utils.to_categorical(labels_enc, num_classes=num_classes)
+        total_folds = {1:40, 2:20, 4:10}[shots]
+        final_results = np.zeros((iterations, total_folds, 5))
+        for fold in tqdm(np.arange(total_folds)):
+            train = folds==fold+1
+            y_cat_train = y_cat[train]
+            y_cat_test = y_cat[~train]
+            data_raw_train = data_raw[train]
+            data_raw_test = data_raw[~train]
+            unknown_train = unknown[train]
+            unknown_test =  unknown[~train]
+            batch_size = 8*shots#int(2**np.floor(np.log(np.sum(train))/np.log(2)-2))
 
-        # extract embeddings
-        emb_model = tf.keras.Model(model.input, model.layers[-3].output)
-        train_embs = emb_model.predict([data_raw_train, np.zeros((np.sum(train), num_classes))], batch_size=batch_size)
-        test_embs = emb_model.predict([data_raw_test, np.zeros((np.sum(~train), num_classes))], batch_size=batch_size)
+            scores_test = np.zeros((np.sum(~train), num_classes))
+            scores_train = np.zeros((np.sum(train), num_classes))
 
-        # length normalization
-        x_train_ln = length_norm(train_embs)
-        x_test_ln = length_norm(test_embs)
+            for k_iter in np.arange(iterations):
+                # compile model
+                data_input, label_input, loss_output = model_emb_cnn(num_classes=num_classes, raw_dim=data_raw_train.shape[1],
+                                                                     n_subclusters=n_subclusters, use_bias=False)
+                model = tf.keras.Model(inputs=[data_input, label_input], outputs=[loss_output])
+                model.compile(loss=[mixupLoss], optimizer=tf.keras.optimizers.Adam())
+                #print(model.summary())
+                # fit model
+                weight_path = './trained_models/wts_' + str(k_iter+1) + 'k_' + str(target_sr) + '_' + str(fold) + '_' + openness + '_' + str(shots) + '.h5'
+                if not os.path.isfile(weight_path):
+                    model.fit(
+                        [data_raw_train, y_cat_train], y_cat_train, verbose=0,
+                        batch_size=batch_size, epochs=epochs,
+                        #validation_data=([data_raw_test, y_cat_test], y_cat_test)
+                        )
+                    model.save(weight_path)
+                else:
+                    model = tf.keras.models.load_model(weight_path,
+                                                       custom_objects={'MixupLayer': MixupLayer, 'mixupLoss': mixupLoss,
+                                                                       'SCAdaCos': SCAdaCos,
+                                                                       'MagnitudeSpectrogram': MagnitudeSpectrogram})
 
-        # compute cosine distances
-        for j_class in np.unique(np.argmax(y_cat_train,axis=1)):
-            class_embs = x_train_ln[np.argmax(y_cat_train,axis=1) == j_class]
-            scores_test[:,j_class] = np.max(np.dot(x_test_ln, class_embs.transpose()), axis=-1)
-            scores_train[:,j_class] = np.max(np.dot(x_train_ln, class_embs.transpose()), axis=-1)
+                # predict class probabilities
+                #test_probs = model.predict([data_raw_test, np.zeros((np.sum(~train), num_classes))], batch_size=batch_size)[:,:,0]
+                #plt.imshow(test_probs, aspect='auto')
+                #plt.show()
 
-        #plt.imshow(scores_test, aspect='auto')
-        #plt.show()
+                # extract embeddings
+                emb_model = tf.keras.Model(model.input, model.layers[-3].output)
+                train_embs = emb_model.predict([data_raw_train, np.zeros((np.sum(train), num_classes))], batch_size=batch_size)
+                test_embs = emb_model.predict([data_raw_test, np.zeros((np.sum(~train), num_classes))], batch_size=batch_size)
 
-        # compute and print results
-        known_idx = np.max(y_cat_train * np.expand_dims(~unknown_train, axis=1), axis=0)
-        #plt.plot(np.max(scores_test * known_idx, axis=1))
-        #plt.show()
-        threshold = 0.6
-        # check if no anomalous training samples are available
-        if openness == 'high':
-            threshold = 0.8
-        pred_test = predict_on_threshold(scores_test, known_idx, threshold=threshold)
-        # pred_test = predict_on_threshold(scores_test*known_idx, threshold=0.7)
-        # plt.imshow(pred_test, aspect='auto')
-        # plt.show()
-        acc_kk = accuracy_score(y_cat_test[~unknown_test] * known_idx, pred_test[~unknown_test])
-        final_results[k_iter, fold, 0] = acc_kk
-        acc_u = accuracy_score(np.zeros(y_cat_test[unknown_test].shape), pred_test[unknown_test])
-        if openness == 'low':
-            # acc_ku
-            final_results[k_iter, fold, 1] = acc_u
-        elif openness == 'middle':
-            # acc_kuu
-            final_results[k_iter, fold, 2] = acc_u
-        elif openness == 'high':
-            # acc_uu
-            final_results[k_iter, fold, 3] = acc_u
-        acc_w = 0.5 * acc_kk + 0.5 * acc_u
-        final_results[k_iter, fold, 4] = acc_w
-        # print(acc_w)
-    # print('####################')
-    # print(np.mean(final_results, axis=0)[fold])
-    # print(np.std(final_results, axis=0)[fold])
-    # print('####################')
+                # length normalization
+                x_train_ln = length_norm(train_embs)
+                x_test_ln = length_norm(test_embs)
 
+                # compute cosine distances
+                for j_class in np.unique(np.argmax(y_cat_train,axis=1)):
+                    class_embs = x_train_ln[np.argmax(y_cat_train,axis=1) == j_class]
+                    scores_test[:,j_class] = np.max(np.dot(x_test_ln, class_embs.transpose()), axis=-1)
+                    scores_train[:,j_class] = np.max(np.dot(x_train_ln, class_embs.transpose()), axis=-1)
 
-print('####################')
-print('####################')
-print('####################')
+                #plt.imshow(scores_test, aspect='auto')
+                #plt.show()
 
-print('final results')
-print(np.mean(final_results, axis=(0,1)))
-print(np.std(final_results, axis=(0,1)))
+                # compute and print results
+                known_idx = np.max(y_cat_train * np.expand_dims(~unknown_train, axis=1), axis=0)
+                #plt.plot(np.max(scores_test * known_idx, axis=1))
+                #plt.show()
+                threshold = 0.6
+                # check if no anomalous training samples are available
+                if openness == 'high':
+                    threshold = 0.8
+                pred_test = predict_on_threshold(scores_test, known_idx, threshold=threshold)
+                # pred_test = predict_on_threshold(scores_test*known_idx, threshold=0.7)
+                # plt.imshow(pred_test, aspect='auto')
+                # plt.show()
+                acc_kk = accuracy_score(y_cat_test[~unknown_test] * known_idx, pred_test[~unknown_test])
+                final_results[k_iter, fold, 0] = acc_kk
+                acc_u = accuracy_score(np.zeros(y_cat_test[unknown_test].shape), pred_test[unknown_test])
+                if openness == 'low':
+                    # acc_ku
+                    final_results[k_iter, fold, 1] = acc_u
+                elif openness == 'middle':
+                    # acc_kuu
+                    final_results[k_iter, fold, 2] = acc_u
+                elif openness == 'high':
+                    # acc_uu
+                    final_results[k_iter, fold, 3] = acc_u
+                acc_w = 0.5 * acc_kk + 0.5 * acc_u
+                final_results[k_iter, fold, 4] = acc_w
+                #print(acc_w)
+            # print('####################')
+            # print(np.mean(final_results, axis=0)[fold])
+            # print(np.std(final_results, axis=0)[fold])
+            # print('####################')
+        print('####################')
+        print('final results for ' + openness + ' openness and ' + str(shots) + ' shots:')
+        print(np.mean(final_results, axis=(0,1)))
+        print(np.std(final_results, axis=(0,1)))
 
 print('####################')
 print('>>>> finished! <<<<<')
