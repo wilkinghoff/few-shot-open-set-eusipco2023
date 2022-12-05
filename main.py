@@ -275,7 +275,8 @@ for openness in ['low', 'middle', 'high']:
             data_raw_test = data_raw[~train]
             unknown_train = unknown[train]
             unknown_test =  unknown[~train]
-            batch_size = 8*shots#int(2**np.floor(np.log(np.sum(train))/np.log(2)-2))
+            batch_size = 8*shots#int(np.sum(train)/6)#8*shots#int(2**np.floor(np.log(np.sum(train))/np.log(2)-2))
+            epochs = (shots)*100
 
             scores_test = np.zeros((np.sum(~train), num_classes))
             scores_train = np.zeros((np.sum(train), num_classes))
@@ -329,7 +330,7 @@ for openness in ['low', 'middle', 'high']:
                 known_idx = np.max(y_cat_train * np.expand_dims(~unknown_train, axis=1), axis=0)
                 #plt.plot(np.max(scores_test * known_idx, axis=1))
                 #plt.show()
-                threshold = 0.6
+                threshold = 0.65
                 # check if no anomalous training samples are available
                 if openness == 'high':
                     threshold = 0.8
