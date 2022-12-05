@@ -330,10 +330,12 @@ for openness in ['low', 'middle', 'high']:
                 known_idx = np.max(y_cat_train * np.expand_dims(~unknown_train, axis=1), axis=0)
                 #plt.plot(np.max(scores_test * known_idx, axis=1))
                 #plt.show()
-                threshold = 0.65
-                # check if no anomalous training samples are available
+                if openness == 'low':
+                    threshold = 0.6
+                if openness == 'middle':
+                    threshold = 0.65
                 if openness == 'high':
-                    threshold = 0.8
+                    threshold = 0.75
                 pred_test = predict_on_threshold(scores_test, known_idx, threshold=threshold)
                 # pred_test = predict_on_threshold(scores_test*known_idx, threshold=0.7)
                 # plt.imshow(pred_test, aspect='auto')
