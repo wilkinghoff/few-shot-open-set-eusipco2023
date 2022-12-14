@@ -226,8 +226,6 @@ def model_emb_cnn(num_classes, raw_dim, n_subclusters, use_bias=False):
 # Load data and compute embeddings
 ########################################################################################################################
 target_sr = 16000 # original sr is 16000
-#openness = 'high' # 'high' or 'middle' or 'low'
-#shots = 4 # 1 or 2 or 4
 
 # training parameters
 epochs = 100
@@ -275,8 +273,8 @@ for openness in ['low', 'middle', 'high']:
             data_raw_test = data_raw[~train]
             unknown_train = unknown[train]
             unknown_test =  unknown[~train]
-            batch_size = 8*shots#int(np.sum(train)/6)#8*shots#int(2**np.floor(np.log(np.sum(train))/np.log(2)-2))
-            epochs = (shots)*100
+            batch_size = 8*shots
+            epochs = 100*shots
 
             scores_test = np.zeros((np.sum(~train), num_classes))
             scores_train = np.zeros((np.sum(train), num_classes))
@@ -303,11 +301,6 @@ for openness in ['low', 'middle', 'high']:
                                                                        'SCAdaCos': SCAdaCos,
                                                                        'MagnitudeSpectrogram': MagnitudeSpectrogram})
 
-                # predict class probabilities
-                #test_probs = model.predict([data_raw_test, np.zeros((np.sum(~train), num_classes))], batch_size=batch_size)[:,:,0]
-                #plt.imshow(test_probs, aspect='auto')
-                #plt.show()
-
                 # extract embeddings
                 emb_model = tf.keras.Model(model.input, model.layers[-3].output)
                 train_embs = emb_model.predict([data_raw_train, np.zeros((np.sum(train), num_classes))], batch_size=batch_size)
@@ -323,9 +316,6 @@ for openness in ['low', 'middle', 'high']:
                     scores_test[:,j_class] = np.max(np.dot(x_test_ln, class_embs.transpose()), axis=-1)
                     scores_train[:,j_class] = np.max(np.dot(x_train_ln, class_embs.transpose()), axis=-1)
 
-                #plt.imshow(scores_test, aspect='auto')
-                #plt.show()
-
                 # compute and print results
                 known_idx = np.max(y_cat_train * np.expand_dims(~unknown_train, axis=1), axis=0)
                 #plt.plot(np.max(scores_test * known_idx, axis=1))
@@ -337,9 +327,6 @@ for openness in ['low', 'middle', 'high']:
                 if openness == 'high':
                     threshold = 0.75
                 pred_test = predict_on_threshold(scores_test, known_idx, threshold=threshold)
-                # pred_test = predict_on_threshold(scores_test*known_idx, threshold=0.7)
-                # plt.imshow(pred_test, aspect='auto')
-                # plt.show()
                 acc_kk = accuracy_score(y_cat_test[~unknown_test] * known_idx, pred_test[~unknown_test])
                 final_results[k_iter, fold, 0] = acc_kk
                 acc_u = accuracy_score(np.zeros(y_cat_test[unknown_test].shape), pred_test[unknown_test])
@@ -354,11 +341,6 @@ for openness in ['low', 'middle', 'high']:
                     final_results[k_iter, fold, 3] = acc_u
                 acc_w = 0.5 * acc_kk + 0.5 * acc_u
                 final_results[k_iter, fold, 4] = acc_w
-                #print(acc_w)
-            # print('####################')
-            # print(np.mean(final_results, axis=0)[fold])
-            # print(np.std(final_results, axis=0)[fold])
-            # print('####################')
         print('####################')
         print('final results for ' + openness + ' openness and ' + str(shots) + ' shots:')
         print(np.mean(final_results, axis=(0,1)))
