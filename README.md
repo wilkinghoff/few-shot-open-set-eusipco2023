@@ -16,5 +16,5 @@ When reusing (parts of) the code, a reference to the following paper would be ap
   author = {Wilkinghoff, Kevin and Fritz, Fabian},
   title  = {On Using Pre-Trained Embeddings for Detecting Anomalous Sounds with Limited Training Data},
   note   = {Submitted to 31st European Signal Processing Conference (EUSIPCO)},
-  year   = {2022}
+  year   = {2023}
 }
