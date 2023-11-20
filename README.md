@@ -12,9 +12,11 @@ The implementation is based on Tensorflow 2.3 (more recent versions can run into
 
 When reusing (parts of) the code, a reference to the following paper would be appreciated:
 
-@unpublished{wilkinghoff2023using,
+@inproceedings{wilkinghoff2023using,
   author = {Wilkinghoff, Kevin and Fritz, Fabian},
-  title  = {On Using Pre-Trained Embeddings for Detecting Anomalous Sounds with Limited Training Data},
-  note   = {Accepted for presentation at 31st European Signal Processing Conference (EUSIPCO)},
-  year   = {2023}
+  title = {On Using Pre-Trained Embeddings for Detecting Anomalous Sounds with Limited Training Data},
+  booktitle = {31st European Signal Processing Conference (EUSIPCO)},
+  publisher={IEEE},
+  year = {2023},
+  pages={186--190}
 }
